@@ -156,6 +156,8 @@ type (
 		// reference (if any) and the endpoint server stream. It is set only if the
 		// client sends a normal payload and server streams a result.
 		EndpointStruct string
+		// Kind is the kind of the stream (payload or result or bidirectional).
+		Kind string
 	}
 
 	// RequirementData lists the schemes and scopes defined by a single
@@ -606,6 +608,7 @@ func buildMethodData(m *design.MethodExpr, svcPkgName string, scope *codegen.Nam
 		errors      []*ErrorInitData
 		reqs        []*RequirementData
 		schemes     []string
+		streamType  string
 		svrStream   *StreamData
 		cliStream   *StreamData
 	)
@@ -655,28 +658,28 @@ func buildMethodData(m *design.MethodExpr, svcPkgName string, scope *codegen.Nam
 			Interface: vname + "ClientStream",
 			VarName:   m.Name + "ClientStream",
 		}
-		switch m.Stream {
-		case design.ServerStreamKind:
+		if m.IsResultStreaming() {
+			streamType = "result"
 			svrStream.SendName = rname
 			svrStream.SendRef = resultRef
 			cliStream.RecvName = rname
 			cliStream.RecvRef = resultRef
 			svrStream.EndpointStruct = vname + "EndpointInput"
-		case design.ClientStreamKind:
-			svrStream.RecvName = payloadName
-			svrStream.RecvRef = payloadRef
-			cliStream.SendName = payloadName
-			cliStream.SendRef = payloadRef
-		case design.BidirectionalStreamKind:
-			svrStream.SendName = rname
-			svrStream.SendRef = resultRef
-			svrStream.RecvName = payloadName
-			svrStream.RecvRef = payloadRef
-			cliStream.SendName = payloadName
-			cliStream.SendRef = payloadRef
-			cliStream.RecvName = rname
-			cliStream.RecvRef = resultRef
 		}
+		if m.IsPayloadStreaming() {
+			if streamType == "result" {
+				streamType = "bidirectional"
+			} else {
+				streamType = "payload"
+			}
+			svrStream.RecvName = payloadName
+			svrStream.RecvRef = payloadRef
+			svrStream.EndpointStruct = vname + "EndpointInput"
+			cliStream.SendName = payloadName
+			cliStream.SendRef = payloadRef
+		}
+		svrStream.Kind = streamType
+		cliStream.Kind = streamType
 	}
 	for _, req := range m.Requirements {
 		var rs []*SchemeData

@@ -90,23 +90,33 @@ func server(genpkg string, svc *httpdesign.ServiceExpr) *codegen.File {
 	}
 	for _, e := range data.Endpoints {
 		if e.ServerStream != nil {
-			sections = append(sections, &codegen.SectionTemplate{
-				Name:   "server-stream-send",
-				Source: streamSendT,
-				Data:   e.ServerStream,
-			})
-			if e.Method.ViewedResult != nil {
+			ep := svc.Endpoint(e.Method.Name)
+			if ep.MethodExpr.IsResultStreaming() {
 				sections = append(sections, &codegen.SectionTemplate{
-					Name:   "server-stream-set-view",
-					Source: streamSetViewT,
+					Name:   "server-stream-send",
+					Source: streamSendT,
+					Data:   e.ServerStream,
+				})
+				if e.Method.ViewedResult != nil {
+					sections = append(sections, &codegen.SectionTemplate{
+						Name:   "server-stream-set-view",
+						Source: streamSetViewT,
+						Data:   e.ServerStream,
+					})
+				}
+				sections = append(sections, &codegen.SectionTemplate{
+					Name:   "server-stream-close",
+					Source: streamCloseT,
 					Data:   e.ServerStream,
 				})
 			}
-			sections = append(sections, &codegen.SectionTemplate{
-				Name:   "server-stream-close",
-				Source: streamCloseT,
-				Data:   e.ServerStream,
-			})
+			if ep.MethodExpr.IsPayloadStreaming() {
+				sections = append(sections, &codegen.SectionTemplate{
+					Name:   "server-stream-recv",
+					Source: streamRecvT,
+					Data:   e.ServerStream,
+				})
+			}
 		}
 	}
 
@@ -398,7 +408,7 @@ func {{ .HandlerInit }}(
 ) http.Handler {
 	var (
 		{{- if .ServerStream }}
-			{{- if and .Payload.Ref (not .ServerStream.RecvRef) }}
+			{{- if and .Payload.Ref }}
 		decodeRequest  = {{ .RequestDecoder }}(mux, dec)
 			{{- end }}
 			{{- if not .ServerStream.SendRef }}

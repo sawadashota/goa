@@ -28,6 +28,9 @@ type Client struct {
 	// List Doer is the HTTP client used to make requests to the list endpoint.
 	ListDoer goahttp.Doer
 
+	// Add Doer is the HTTP client used to make requests to the add endpoint.
+	AddDoer goahttp.Doer
+
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -49,6 +52,15 @@ type listClientStream struct {
 	view string
 }
 
+// addClientStream implements the carssvc.AddClientStream interface.
+type addClientStream struct {
+	// conn is the underlying websocket connection.
+	conn *websocket.Conn
+	// view is the view to render carssvc.AddPayload result type before sending to
+	// the websocket connection.
+	view string
+}
+
 // NewClient instantiates HTTP clients for all the cars service servers.
 func NewClient(
 	scheme string,
@@ -63,6 +75,7 @@ func NewClient(
 	return &Client{
 		LoginDoer:           doer,
 		ListDoer:            doer,
+		AddDoer:             doer,
 		RestoreResponseBody: restoreBody,
 		scheme:              scheme,
 		host:                host,
@@ -134,6 +147,7 @@ func (c *Client) List() goa.Endpoint {
 // Recv receives a carssvc.Car type from the "list" endpoint websocket
 // connection.
 func (s *listClientStream) Recv() (*carssvc.Car, error) {
+	defer s.conn.Close()
 	var body ListResponseBody
 	err := s.conn.ReadJSON(&body)
 	if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
@@ -154,4 +168,65 @@ func (s *listClientStream) Recv() (*carssvc.Car, error) {
 // endpoint websocket connection.
 func (s *listClientStream) SetView(view string) {
 	s.view = view
+}
+
+// Add returns an endpoint that makes HTTP requests to the cars service add
+// server.
+func (c *Client) Add() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeAddRequest(c.encoder)
+		decodeResponse = DecodeAddResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v interface{}) (interface{}, error) {
+		req, err := c.BuildAddRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		conn, resp, err := c.dialer.Dial(req.URL.String(), req.Header)
+		if err != nil {
+			if resp != nil {
+				return decodeResponse(resp)
+			}
+			return nil, goahttp.ErrRequestError("cars", "add", err)
+		}
+		if c.connConfigFn != nil {
+			conn = c.connConfigFn(conn)
+		}
+		stream := &addClientStream{conn: conn}
+		return stream, nil
+	}
+}
+
+// Send sends carssvc.AddPayload type to the "add" endpoint websocket
+// connection.
+func (s *addClientStream) Send(v *carssvc.AddPayload) error {
+	body := NewAddRequestBody(v)
+	return s.conn.WriteJSON(body)
+}
+
+func (s *addClientStream) CloseAndRecv() (carssvc.CarCollection, error) {
+	defer s.conn.Close()
+	// Send an empty message to imply the end of message
+	if err := s.conn.WriteJSON(nil); err != nil {
+		return nil, err
+	}
+	var body AddResponseBody
+	err := s.conn.ReadJSON(&body)
+	if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+		return nil, io.EOF
+	}
+	if err != nil {
+		return nil, err
+	}
+	res := NewAddCarCollectionCreated(body)
+	vres := carssvcviews.CarCollection{res, s.view}
+	if err := vres.Validate(); err != nil {
+		return nil, goahttp.ErrValidationError("cars", "add", err)
+	}
+	return carssvc.NewCarCollection(vres), nil
+
 }

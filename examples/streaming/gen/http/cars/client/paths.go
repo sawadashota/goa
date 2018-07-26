@@ -17,3 +17,8 @@ func LoginCarsPath() string {
 func ListCarsPath() string {
 	return "/cars"
 }
+
+// AddCarsPath returns the URL path to the cars service add HTTP endpoint.
+func AddCarsPath() string {
+	return "/cars/add"
+}

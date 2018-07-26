@@ -10,6 +10,8 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -25,6 +27,7 @@ type Server struct {
 	Mounts []*MountPoint
 	Login  http.Handler
 	List   http.Handler
+	Add    http.Handler
 }
 
 // ErrorNamer is an interface implemented by generated error structs that
@@ -62,6 +65,24 @@ type listServerStream struct {
 	view string
 }
 
+// addServerStream implements the carssvc.AddServerStream interface.
+type addServerStream struct {
+	once sync.Once
+	// upgrader is the websocket connection upgrader.
+	upgrader goahttp.Upgrader
+	// connConfigFn is the websocket connection configurer.
+	connConfigFn goahttp.ConnConfigureFunc
+	// w is the HTTP response writer used in upgrading the connection.
+	w http.ResponseWriter
+	// r is the HTTP request.
+	r *http.Request
+	// conn is the underlying websocket connection.
+	conn *websocket.Conn
+	// view is the view to render  result type before sending to the websocket
+	// connection.
+	view string
+}
+
 // New instantiates HTTP handlers for all the cars service endpoints.
 func New(
 	e *carssvc.Endpoints,
@@ -76,9 +97,11 @@ func New(
 		Mounts: []*MountPoint{
 			{"Login", "POST", "/cars/login"},
 			{"List", "GET", "/cars"},
+			{"Add", "POST", "/cars"},
 		},
 		Login: NewLoginHandler(e.Login, mux, dec, enc, eh),
 		List:  NewListHandler(e.List, mux, dec, enc, eh, up, connConfigFn),
+		Add:   NewAddHandler(e.Add, mux, dec, enc, eh, up, connConfigFn),
 	}
 }
 
@@ -89,12 +112,14 @@ func (s *Server) Service() string { return "cars" }
 func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.Login = m(s.Login)
 	s.List = m(s.List)
+	s.Add = m(s.Add)
 }
 
 // Mount configures the mux to serve the cars endpoints.
 func Mount(mux goahttp.Muxer, h *Server) {
 	MountLoginHandler(mux, h.Login)
 	MountListHandler(mux, h.List)
+	MountAddHandler(mux, h.Add)
 }
 
 // MountLoginHandler configures the mux to serve the "cars" service "login"
@@ -207,6 +232,66 @@ func NewListHandler(
 	})
 }
 
+// MountAddHandler configures the mux to serve the "cars" service "add"
+// endpoint.
+func MountAddHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("GET", "/cars/add", f)
+}
+
+// NewAddHandler creates a HTTP handler which loads the HTTP request and calls
+// the "cars" service "add" endpoint.
+func NewAddHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	dec func(*http.Request) goahttp.Decoder,
+	enc func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	eh func(context.Context, http.ResponseWriter, error),
+	up goahttp.Upgrader,
+	connConfigFn goahttp.ConnConfigureFunc,
+) http.Handler {
+	var (
+		decodeRequest = DecodeAddRequest(mux, dec)
+		encodeError   = EncodeAddError(enc)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "add")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "cars")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			eh(ctx, w, err)
+			return
+		}
+
+		v := &carssvc.AddEndpointInput{
+			Stream: &addServerStream{
+				upgrader:     up,
+				connConfigFn: connConfigFn,
+				w:            w,
+				r:            r,
+			},
+			Payload: payload.(*carssvc.AddPayload),
+		}
+		_, err = endpoint(ctx, v)
+		fmt.Println(fmt.Sprintf("%#v", err))
+		if err != nil {
+			if _, ok := err.(websocket.HandshakeError); ok {
+				return
+			}
+			if err := encodeError(ctx, w, err); err != nil {
+				eh(ctx, w, err)
+			}
+			return
+		}
+	})
+}
+
 // Send sends carssvc.Car type to the "list" endpoint websocket connection.
 func (s *listServerStream) Send(v *carssvc.Car) error {
 	var err error
@@ -259,5 +344,49 @@ func (s *listServerStream) Close() error {
 	if err != nil {
 		return err
 	}
-	return s.conn.Close()
+	err = s.conn.Close()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Recv receives a carssvc.AddPayload type from the "add" endpoint websocket
+// connection.
+func (s *addServerStream) Recv() (*carssvc.AddPayload, error) {
+	var err error
+	// Upgrade the HTTP connection to a websocket connection only once before
+	// sending result. Connection upgrade is done here so that authorization logic
+	// in the endpoint is executed before calling the actual service method which
+	// may call Send().
+	s.once.Do(func() {
+		var conn *websocket.Conn
+		conn, err = s.upgrader.Upgrade(s.w, s.r, nil)
+		if err != nil {
+			return
+		}
+		if s.connConfigFn != nil {
+			conn = s.connConfigFn(conn)
+		}
+		s.conn = conn
+	})
+	if err != nil {
+		return nil, err
+	}
+	var body carssvc.AddPayload
+	err = s.conn.ReadJSON(&body)
+	if body.Car == nil {
+		return nil, io.EOF
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &body, nil
+}
+
+func (s *addServerStream) SendAndClose(v carssvc.CarCollection) error {
+	defer s.conn.Close()
+	res := carssvc.NewViewedCarCollection(v, s.view)
+	body := NewAddResponseBody(res.Projected)
+	return s.conn.WriteJSON(body)
 }

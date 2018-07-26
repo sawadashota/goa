@@ -19,6 +19,7 @@ import (
 type Endpoints struct {
 	Login goa.Endpoint
 	List  goa.Endpoint
+	Add   goa.Endpoint
 }
 
 // ListEndpointInput is the input type of "list" endpoint that holds the method
@@ -30,11 +31,20 @@ type ListEndpointInput struct {
 	Stream ListServerStream
 }
 
+// AddEndpointInput is the input type of "add" endpoint that holds the method
+// payload and the server stream.
+type AddEndpointInput struct {
+	// Stream is the server stream used by the "add" method to send data.
+	Stream  AddServerStream
+	Payload *AddPayload
+}
+
 // NewEndpoints wraps the methods of the "cars" service with endpoints.
 func NewEndpoints(s Service, authBasicFn security.AuthBasicFunc, authJWTFn security.AuthJWTFunc) *Endpoints {
 	return &Endpoints{
 		Login: NewLoginEndpoint(s, authBasicFn),
 		List:  NewListEndpoint(s, authJWTFn),
+		Add:   NewAddEndpoint(s, authJWTFn),
 	}
 }
 
@@ -42,6 +52,7 @@ func NewEndpoints(s Service, authBasicFn security.AuthBasicFunc, authJWTFn secur
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.Login = m(e.Login)
 	e.List = m(e.List)
+	e.Add = m(e.Add)
 }
 
 // NewLoginEndpoint returns an endpoint function that calls the method "login"
@@ -77,5 +88,28 @@ func NewListEndpoint(s Service, authJWTFn security.AuthJWTFunc) goa.Endpoint {
 			return nil, err
 		}
 		return nil, s.List(ctx, ep.Payload, ep.Stream)
+	}
+}
+
+// NewAddEndpoint returns an endpoint function that calls the method "add" of
+// service "cars".
+func NewAddEndpoint(s Service, authJWTFn security.AuthJWTFunc) goa.Endpoint {
+	return func(ctx context.Context, req interface{}) (interface{}, error) {
+		ep := req.(*AddEndpointInput)
+		var err error
+		sc := security.JWTScheme{
+			Name:           "jwt",
+			Scopes:         []string{"stream:read", "stream:write"},
+			RequiredScopes: []string{"stream:write"},
+		}
+		var token string
+		if ep.Payload.Token != nil {
+			token = *ep.Payload.Token
+		}
+		ctx, err = authJWTFn(ctx, token, &sc)
+		if err != nil {
+			return nil, err
+		}
+		return nil, s.Add(ctx, ep.Stream)
 	}
 }

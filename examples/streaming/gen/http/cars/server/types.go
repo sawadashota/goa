@@ -9,9 +9,17 @@
 package server
 
 import (
+	goa "goa.design/goa"
 	carssvc "goa.design/goa/examples/streaming/gen/cars"
 	carssvcviews "goa.design/goa/examples/streaming/gen/cars/views"
 )
+
+// AddRequestBody is the type of the "cars" service "add" endpoint HTTP request
+// body.
+type AddRequestBody struct {
+	// Car to add.
+	Car *CarRequestBody `form:"car,omitempty" json:"car,omitempty" xml:"car,omitempty"`
+}
 
 // ListResponseBody is the type of the "cars" service "list" endpoint HTTP
 // response body.
@@ -23,6 +31,10 @@ type ListResponseBody struct {
 	// The car body style
 	BodyStyle *string `form:"body_style,omitempty" json:"body_style,omitempty" xml:"body_style,omitempty"`
 }
+
+// AddResponseBody is the type of the "cars" service "add" endpoint HTTP
+// response body.
+type AddResponseBody []*CarResponseBody
 
 // LoginUnauthorizedResponseBody is the type of the "cars" service "login"
 // endpoint HTTP response body for the "unauthorized" error.
@@ -36,6 +48,34 @@ type ListInvalidScopesResponseBody string
 // endpoint HTTP response body for the "unauthorized" error.
 type ListUnauthorizedResponseBody string
 
+// AddInvalidScopesResponseBody is the type of the "cars" service "add"
+// endpoint HTTP response body for the "invalid-scopes" error.
+type AddInvalidScopesResponseBody string
+
+// AddUnauthorizedResponseBody is the type of the "cars" service "add" endpoint
+// HTTP response body for the "unauthorized" error.
+type AddUnauthorizedResponseBody string
+
+// CarRequestBody is used to define fields on request body types.
+type CarRequestBody struct {
+	// The make of the car
+	Make *string `form:"make,omitempty" json:"make,omitempty" xml:"make,omitempty"`
+	// The car model
+	Model *string `form:"model,omitempty" json:"model,omitempty" xml:"model,omitempty"`
+	// The car body style
+	BodyStyle *string `form:"body_style,omitempty" json:"body_style,omitempty" xml:"body_style,omitempty"`
+}
+
+// CarResponseBody is used to define fields on response body types.
+type CarResponseBody struct {
+	// The make of the car
+	Make *string `form:"make,omitempty" json:"make,omitempty" xml:"make,omitempty"`
+	// The car model
+	Model *string `form:"model,omitempty" json:"model,omitempty" xml:"model,omitempty"`
+	// The car body style
+	BodyStyle *string `form:"body_style,omitempty" json:"body_style,omitempty" xml:"body_style,omitempty"`
+}
+
 // NewListResponseBody builds the HTTP response body from the result of the
 // "list" endpoint of the "cars" service.
 func NewListResponseBody(res *carssvcviews.CarView) *ListResponseBody {
@@ -43,6 +83,20 @@ func NewListResponseBody(res *carssvcviews.CarView) *ListResponseBody {
 		Make:      res.Make,
 		Model:     res.Model,
 		BodyStyle: res.BodyStyle,
+	}
+	return body
+}
+
+// NewAddResponseBody builds the HTTP response body from the result of the
+// "add" endpoint of the "cars" service.
+func NewAddResponseBody(res carssvcviews.CarCollectionView) AddResponseBody {
+	body := make([]*CarResponseBody, len(res))
+	for i, val := range res {
+		body[i] = &CarResponseBody{
+			Make:      val.Make,
+			Model:     val.Model,
+			BodyStyle: val.BodyStyle,
+		}
 	}
 	return body
 }
@@ -68,6 +122,20 @@ func NewListUnauthorizedResponseBody(res carssvc.Unauthorized) ListUnauthorizedR
 	return body
 }
 
+// NewAddInvalidScopesResponseBody builds the HTTP response body from the
+// result of the "add" endpoint of the "cars" service.
+func NewAddInvalidScopesResponseBody(res carssvc.InvalidScopes) AddInvalidScopesResponseBody {
+	body := AddInvalidScopesResponseBody(res)
+	return body
+}
+
+// NewAddUnauthorizedResponseBody builds the HTTP response body from the result
+// of the "add" endpoint of the "cars" service.
+func NewAddUnauthorizedResponseBody(res carssvc.Unauthorized) AddUnauthorizedResponseBody {
+	body := AddUnauthorizedResponseBody(res)
+	return body
+}
+
 // NewLoginPayload builds a cars service login endpoint payload.
 func NewLoginPayload() *carssvc.LoginPayload {
 	return &carssvc.LoginPayload{}
@@ -79,4 +147,52 @@ func NewListPayload(style string, token string) *carssvc.ListPayload {
 		Style: style,
 		Token: token,
 	}
+}
+
+// NewAddPayload builds a cars service add endpoint payload.
+func NewAddPayload(body *AddRequestBody, token *string) *carssvc.AddPayload {
+	v := &carssvc.AddPayload{}
+	/*if body.Car != nil {
+		v.Car = unmarshalCarRequestBodyToCar(body.Car)
+	}*/
+	v.Token = token
+	return v
+}
+
+// Validate runs the validations defined on AddRequestBody
+func (body *AddRequestBody) Validate() (err error) {
+	if body.Car != nil {
+		if err2 := body.Car.Validate(); err2 != nil {
+			err = goa.MergeErrors(err, err2)
+		}
+	}
+	return
+}
+
+// Validate runs the validations defined on carRequestBody
+func (body *CarRequestBody) Validate() (err error) {
+	if body.Make == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("make", "body"))
+	}
+	if body.Model == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("model", "body"))
+	}
+	if body.BodyStyle == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("body_style", "body"))
+	}
+	return
+}
+
+// Validate runs the validations defined on carResponseBody
+func (body *CarResponseBody) Validate() (err error) {
+	if body.Make == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("make", "body"))
+	}
+	if body.Model == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("model", "body"))
+	}
+	if body.BodyStyle == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("body_style", "body"))
+	}
+	return
 }

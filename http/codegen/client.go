@@ -88,15 +88,30 @@ func client(genpkg string, svc *httpdesign.ServiceExpr) *codegen.File {
 			Data:   e,
 		})
 		if e.ClientStream != nil {
-			sections = append(sections, &codegen.SectionTemplate{
-				Name:   "client-stream-recv",
-				Source: streamRecvT,
-				Data:   e.ClientStream,
-			})
-			if e.Method.ViewedResult != nil {
+			ep := svc.Endpoint(e.Method.Name)
+			if ep.MethodExpr.IsResultStreaming() {
 				sections = append(sections, &codegen.SectionTemplate{
-					Name:   "client-stream-set-view",
-					Source: streamSetViewT,
+					Name:   "client-stream-recv",
+					Source: streamRecvT,
+					Data:   e.ClientStream,
+				})
+				if e.Method.ViewedResult != nil {
+					sections = append(sections, &codegen.SectionTemplate{
+						Name:   "client-stream-set-view",
+						Source: streamSetViewT,
+						Data:   e.ClientStream,
+					})
+				}
+			}
+			if ep.MethodExpr.IsPayloadStreaming() {
+				sections = append(sections, &codegen.SectionTemplate{
+					Name:   "client-stream-send",
+					Source: streamSendT,
+					Data:   e.ClientStream,
+				})
+				sections = append(sections, &codegen.SectionTemplate{
+					Name:   "client-stream-close",
+					Source: streamCloseT,
 					Data:   e.ClientStream,
 				})
 			}

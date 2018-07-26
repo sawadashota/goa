@@ -20,6 +20,14 @@ type Car struct {
 	View string
 }
 
+// CarCollection is the viewed result type that is projected based on a view.
+type CarCollection struct {
+	// Type to project
+	Projected CarCollectionView
+	// View to render
+	View string
+}
+
 // CarView is a type that runs validations on a projected type.
 type CarView struct {
 	// The make of the car
@@ -30,8 +38,23 @@ type CarView struct {
 	BodyStyle *string
 }
 
+// CarCollectionView is a type that runs validations on a projected type.
+type CarCollectionView []*CarView
+
 // Validate runs the validations defined on the viewed result type Car.
 func (result *Car) Validate() (err error) {
+	switch result.View {
+	case "default", "":
+		err = result.Projected.Validate()
+	default:
+		err = goa.InvalidEnumValueError("view", result.View, []interface{}{"default"})
+	}
+	return
+}
+
+// Validate runs the validations defined on the viewed result type
+// CarCollection.
+func (result CarCollection) Validate() (err error) {
 	switch result.View {
 	case "default", "":
 		err = result.Projected.Validate()
@@ -51,6 +74,17 @@ func (result *CarView) Validate() (err error) {
 	}
 	if result.BodyStyle == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("body_style", "result"))
+	}
+	return
+}
+
+// Validate runs the validations defined on CarCollectionView using the
+// "default" view.
+func (result CarCollectionView) Validate() (err error) {
+	for _, item := range result {
+		if err2 := item.Validate(); err2 != nil {
+			err = goa.MergeErrors(err, err2)
+		}
 	}
 	return
 }

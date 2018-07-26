@@ -9,6 +9,9 @@
 package client
 
 import (
+	"encoding/json"
+	"fmt"
+
 	carssvc "goa.design/goa/examples/streaming/gen/cars"
 )
 
@@ -46,4 +49,31 @@ func BuildListPayload(carsListStyle string, carsListToken string) (*carssvc.List
 		Token: token,
 	}
 	return payload, nil
+}
+
+// BuildAddPayload builds the payload for the cars add endpoint from CLI flags.
+func BuildAddPayload(carsAddBody string, carsAddToken string) (*carssvc.AddPayload, error) {
+	var err error
+	var body AddRequestBody
+	{
+		err = json.Unmarshal([]byte(carsAddBody), &body)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON for body, example of valid JSON:\n%s", "'{\n      \"car\": {\n         \"body_style\": \"Laudantium qui minima voluptatibus in incidunt.\",\n         \"make\": \"Aspernatur totam.\",\n         \"model\": \"Vero odio odio id autem.\"\n      }\n   }'")
+		}
+	}
+	var token *string
+	{
+		if carsAddToken != "" {
+			token = &carsAddToken
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	v := &carssvc.AddPayload{}
+	if body.Car != nil {
+		v.Car = marshalCarRequestBodyToCar(body.Car)
+	}
+	v.Token = token
+	return v, nil
 }

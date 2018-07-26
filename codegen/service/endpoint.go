@@ -196,7 +196,7 @@ func New{{ .VarName }}(s {{ .ServiceVarName }}{{ range .Schemes }}, auth{{ . }}F
 // input: EndpointMethodData
 const serviceEndpointInputStructT = `{{ printf "%s is the input type of %q endpoint that holds the method payload and the server stream." .ServerStream.EndpointStruct .Name | comment }}
 type {{ .ServerStream.EndpointStruct }} struct {
-{{- if .PayloadRef }}
+{{- if and .PayloadRef (eq .ServerStream.Kind "result") }}
 	{{ comment "Payload is the method payload." }}
 	Payload {{ .PayloadRef }}
 {{- end }}

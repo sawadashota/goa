@@ -2,6 +2,7 @@ package cars
 
 import (
 	"context"
+	"io"
 	"log"
 	"time"
 
@@ -46,6 +47,25 @@ func (s *carsSvc) List(ctx context.Context, p *carssvc.ListPayload, stream carss
 		}
 	}
 	return stream.Close()
+}
+
+// Add car models.
+func (s *carsSvc) Add(ctx context.Context, stream carssvc.AddServerStream) (err error) {
+	var res carssvc.CarCollection
+	for {
+		p, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if car := p.Car; car != nil {
+			modelsByStyle[car.BodyStyle] = append(modelsByStyle[car.BodyStyle], car)
+			res = append(res, car)
+		}
+	}
+	return stream.SendAndClose(res)
 }
 
 var modelsByStyle = map[string][]*carssvc.Car{

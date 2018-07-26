@@ -48,9 +48,6 @@ const (
 	ClientStreamKind
 	// ServerStreamKind represents server sends a streaming result from method.
 	ServerStreamKind
-	// BidirectionalStreamKind represents both client and server streams payload
-	// and result respectively.
-	BidirectionalStreamKind
 )
 
 // Error returns the error with the given name. It looks up recursively in the
@@ -220,9 +217,14 @@ func (m *MethodExpr) IsStreaming() bool {
 	return m.Stream != 0 && m.Stream != NoStreamKind
 }
 
+// IsPayloadStreaming determines whether the method payload is streamed.
+func (m *MethodExpr) IsPayloadStreaming() bool {
+	return m.Stream == ClientStreamKind
+}
+
 // IsResultStreaming determines whether the method result is streamed.
 func (m *MethodExpr) IsResultStreaming() bool {
-	return m.Stream == ServerStreamKind || m.Stream == BidirectionalStreamKind
+	return m.Stream == ServerStreamKind
 }
 
 // helper function that duplicates just enough of a security expression so that

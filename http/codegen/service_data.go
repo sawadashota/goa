@@ -518,6 +518,8 @@ type (
 		RecvRef string
 		// PkgName is the service package name.
 		PkgName string
+		// Kind is the kind of the stream (payload or result or bidirectional).
+		Kind string
 	}
 )
 
@@ -825,6 +827,7 @@ func (d ServicesData) analyze(hs *httpdesign.ServiceExpr) *ServiceData {
 				PkgName:   svc.PkgName,
 				Scheme:    wsscheme,
 				Type:      "server",
+				Kind:      ep.ServerStream.Kind,
 			}
 			ad.ClientStream = &StreamData{
 				VarName:   ep.ClientStream.VarName,
@@ -834,6 +837,7 @@ func (d ServicesData) analyze(hs *httpdesign.ServiceExpr) *ServiceData {
 				PkgName:   svc.PkgName,
 				Scheme:    wsscheme,
 				Type:      "client",
+				Kind:      ep.ClientStream.Kind,
 			}
 			if ep.ServerStream.SendRef != "" {
 				// server streaming result
@@ -2162,6 +2166,7 @@ func (s *{{ .VarName }}) Send(v {{ .SendRef }}) error {
 	// input: StreamData
 	streamRecvT = `{{ printf "Recv receives a %s type from the %q endpoint websocket connection." .RecvName .Endpoint.Method.Name | comment }}
 func (s *{{ .VarName }}) Recv() ({{ .RecvRef }}, error) {
+{{- if eq .Kind "result" }}
 	var body {{ .Response.ClientBody.VarName }}
 	err := s.conn.ReadJSON(&body)
 	if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
@@ -2186,6 +2191,17 @@ func (s *{{ .VarName }}) Recv() ({{ .RecvRef }}, error) {
 	{{- else }}
 	return res, nil
 	{{- end }}
+{{- else if eq .Kind "payload" }}
+	var body {{ .Endpoint.Payload.Name }}
+	err := s.conn.ReadJSON(&body)
+	if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+		return nil, io.EOF
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &body, nil
+{{- end }}
 }
 `
 
@@ -2208,7 +2224,13 @@ func (s *{{ .VarName }}) Close() error {
 	if err != nil {
 		return err
 	}
-	return s.conn.Close()
+	{{- if eq .Type "server" }}
+	err = s.conn.Close()
+	if err != nil {
+		return err
+	}
+	{{- end }}
+	return nil
 }
 `
 

@@ -22,15 +22,23 @@ var JWTAuth = JWTSecurity("jwt", func() {
 	Scope("stream:write", "Read and write access")
 })
 
-// Car is the car result type.
-var Car = ResultType("application/vnd.goa.car", func() {
+// StoredCar is the car result type.
+var StoredCar = ResultType("application/vnd.goa.car", func() {
 	TypeName("car")
+	Reference(Car)
 	Attributes(func() {
 		Attribute("make", String, "The make of the car")
 		Attribute("model", String, "The car model")
 		Attribute("body_style", String, "The car body style")
-		Required("make", "model", "body_style")
 	})
+})
+
+// Car is the car type.
+var Car = Type("car", func() {
+	Attribute("make", String, "The make of the car")
+	Attribute("model", String, "The car model")
+	Attribute("body_style", String, "The car body style")
+	Required("make", "model", "body_style")
 })
 
 var _ = Service("cars", func() {
@@ -86,7 +94,7 @@ var _ = Service("cars", func() {
 			Required("style", "token")
 		})
 
-		StreamingResult(Car)
+		StreamingResult(StoredCar)
 
 		Error("unauthorized", String)
 		Error("invalid-scopes", String)
@@ -96,6 +104,34 @@ var _ = Service("cars", func() {
 			Param("style")
 			Header("token:Authorization")
 			Response(StatusOK)
+			Response("unauthorized", StatusUnauthorized)
+			Response("invalid-scopes", StatusForbidden)
+		})
+	})
+
+	Method("add", func() {
+		Description("Add car models.")
+
+		Security(JWTAuth, func() {
+			Scope("stream:write")
+		})
+
+		StreamingPayload(func() {
+			Attribute("car", Car, "Car to add.")
+			Token("token", String, func() {
+				Description("JWT used for authentication")
+			})
+		})
+
+		Result(CollectionOf(StoredCar))
+
+		Error("unauthorized", String)
+		Error("invalid-scopes", String)
+
+		HTTP(func() {
+			GET("/add")
+			Header("token:Authorization")
+			Response(StatusCreated)
 			Response("unauthorized", StatusUnauthorized)
 			Response("invalid-scopes", StatusForbidden)
 		})

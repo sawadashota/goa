@@ -18,13 +18,15 @@ import (
 type Client struct {
 	LoginEndpoint goa.Endpoint
 	ListEndpoint  goa.Endpoint
+	AddEndpoint   goa.Endpoint
 }
 
 // NewClient initializes a "cars" service client given the endpoints.
-func NewClient(login, list goa.Endpoint) *Client {
+func NewClient(login, list, add goa.Endpoint) *Client {
 	return &Client{
 		LoginEndpoint: login,
 		ListEndpoint:  list,
+		AddEndpoint:   add,
 	}
 }
 
@@ -53,4 +55,18 @@ func (c *Client) List(ctx context.Context, p *ListPayload) (res ListClientStream
 		return
 	}
 	return ires.(ListClientStream), nil
+}
+
+// Add calls the "add" endpoint of the "cars" service.
+// Add may return the following errors:
+//	- "unauthorized" (type Unauthorized)
+//	- "invalid-scopes" (type InvalidScopes)
+//	- error: internal error
+func (c *Client) Add(ctx context.Context, p *AddPayload) (res AddClientStream, err error) {
+	var ires interface{}
+	ires, err = c.AddEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(AddClientStream), nil
 }

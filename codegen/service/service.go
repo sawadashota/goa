@@ -184,7 +184,7 @@ type Service interface {
 		{{- end }}
 		{{- end }}
 	{{- end }}
-	{{- if .ServerStream }}
+	{{- if or .ServerStream }}
 	{{ .VarName }}(context.Context{{ if .Payload }}, {{ .PayloadRef }}{{ end }}, {{ .ServerStream.Interface }}) (err error)
 	{{- else }}
 	{{ .VarName }}(context.Context{{ if .Payload }}, {{ .PayloadRef }}{{ end }}) ({{ if .Result }}res {{ .ResultRef }}, {{ if .ViewedResult }}{{ if not .ViewedResult.ViewName }}view string, {{ end }}{{ end }}{{ end }}err error)
@@ -221,7 +221,7 @@ type {{ .Stream.Interface }} interface {
 		{{ printf "Recv reads instances of %q from the stream." .Stream.RecvName | comment }}
 		Recv() ({{ .Stream.RecvRef }}, error)
 	{{- end }}
-	{{- if and .IsViewedResult (eq .Kind "server") }}
+	{{- if and .IsViewedResult (and (eq .Kind "server") (eq .Stream.Kind "result")) }}
 		{{ comment "SetView sets the view used to render the result before streaming." }}
 		SetView(view string)
 	{{- end }}

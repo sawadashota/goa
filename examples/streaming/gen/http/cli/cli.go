@@ -24,7 +24,7 @@ import (
 //    command (subcommand1|subcommand2|...)
 //
 func UsageCommands() string {
-	return `cars (login|list)
+	return `cars (login|list|add)
 `
 }
 
@@ -55,10 +55,15 @@ func ParseEndpoint(
 		carsListFlags     = flag.NewFlagSet("list", flag.ExitOnError)
 		carsListStyleFlag = carsListFlags.String("style", "REQUIRED", "")
 		carsListTokenFlag = carsListFlags.String("token", "REQUIRED", "")
+
+		carsAddFlags     = flag.NewFlagSet("add", flag.ExitOnError)
+		carsAddBodyFlag  = carsAddFlags.String("body", "REQUIRED", "")
+		carsAddTokenFlag = carsAddFlags.String("token", "", "")
 	)
 	carsFlags.Usage = carsUsage
 	carsLoginFlags.Usage = carsLoginUsage
 	carsListFlags.Usage = carsListUsage
+	carsAddFlags.Usage = carsAddUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -100,6 +105,9 @@ func ParseEndpoint(
 			case "list":
 				epf = carsListFlags
 
+			case "add":
+				epf = carsAddFlags
+
 			}
 
 		}
@@ -131,6 +139,9 @@ func ParseEndpoint(
 			case "list":
 				endpoint = c.List()
 				data, err = carssvcc.BuildListPayload(*carsListStyleFlag, *carsListTokenFlag)
+			case "add":
+				endpoint = c.Add()
+				data, err = carssvcc.BuildAddPayload(*carsAddBodyFlag, *carsAddTokenFlag)
 			}
 		}
 	}
@@ -150,6 +161,7 @@ Usage:
 COMMAND:
     login: Creates a valid JWT
     list: Lists car models by body style.
+    add: Add car models.
 
 Additional help:
     %s cars COMMAND --help
@@ -175,6 +187,24 @@ Lists car models by body style.
     -token STRING: 
 
 Example:
-    `+os.Args[0]+` cars list --style "hatchback" --token "Voluptatem perferendis dignissimos similique doloribus et rerum."
+    `+os.Args[0]+` cars list --style "sedan" --token "Optio voluptatem perferendis dignissimos."
+`, os.Args[0])
+}
+
+func carsAddUsage() {
+	fmt.Fprintf(os.Stderr, `%s [flags] cars add -body JSON -token STRING
+
+Add car models.
+    -body JSON: 
+    -token STRING: 
+
+Example:
+    `+os.Args[0]+` cars add --body '{
+      "car": {
+         "body_style": "Laudantium qui minima voluptatibus in incidunt.",
+         "make": "Aspernatur totam.",
+         "model": "Vero odio odio id autem."
+      }
+   }' --token "Rerum dolor."
 `, os.Args[0])
 }

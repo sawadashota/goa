@@ -9,9 +9,17 @@
 package client
 
 import (
+	goa "goa.design/goa"
 	carssvc "goa.design/goa/examples/streaming/gen/cars"
 	carssvcviews "goa.design/goa/examples/streaming/gen/cars/views"
 )
+
+// AddRequestBody is the type of the "cars" service "add" endpoint HTTP request
+// body.
+type AddRequestBody struct {
+	// Car to add.
+	Car *CarRequestBody `form:"car,omitempty" json:"car,omitempty" xml:"car,omitempty"`
+}
 
 // ListResponseBody is the type of the "cars" service "list" endpoint HTTP
 // response body.
@@ -24,6 +32,10 @@ type ListResponseBody struct {
 	BodyStyle *string `form:"body_style,omitempty" json:"body_style,omitempty" xml:"body_style,omitempty"`
 }
 
+// AddResponseBody is the type of the "cars" service "add" endpoint HTTP
+// response body.
+type AddResponseBody []*CarResponseBody
+
 // LoginUnauthorizedResponseBody is the type of the "cars" service "login"
 // endpoint HTTP response body for the "unauthorized" error.
 type LoginUnauthorizedResponseBody string
@@ -35,6 +47,44 @@ type ListInvalidScopesResponseBody string
 // ListUnauthorizedResponseBody is the type of the "cars" service "list"
 // endpoint HTTP response body for the "unauthorized" error.
 type ListUnauthorizedResponseBody string
+
+// AddInvalidScopesResponseBody is the type of the "cars" service "add"
+// endpoint HTTP response body for the "invalid-scopes" error.
+type AddInvalidScopesResponseBody string
+
+// AddUnauthorizedResponseBody is the type of the "cars" service "add" endpoint
+// HTTP response body for the "unauthorized" error.
+type AddUnauthorizedResponseBody string
+
+// CarRequestBody is used to define fields on request body types.
+type CarRequestBody struct {
+	// The make of the car
+	Make string `form:"make" json:"make" xml:"make"`
+	// The car model
+	Model string `form:"model" json:"model" xml:"model"`
+	// The car body style
+	BodyStyle string `form:"body_style" json:"body_style" xml:"body_style"`
+}
+
+// CarResponseBody is used to define fields on response body types.
+type CarResponseBody struct {
+	// The make of the car
+	Make *string `form:"make,omitempty" json:"make,omitempty" xml:"make,omitempty"`
+	// The car model
+	Model *string `form:"model,omitempty" json:"model,omitempty" xml:"model,omitempty"`
+	// The car body style
+	BodyStyle *string `form:"body_style,omitempty" json:"body_style,omitempty" xml:"body_style,omitempty"`
+}
+
+// NewAddRequestBody builds the HTTP request body from the payload of the "add"
+// endpoint of the "cars" service.
+func NewAddRequestBody(p *carssvc.AddPayload) *AddRequestBody {
+	body := &AddRequestBody{}
+	if p.Car != nil {
+		body.Car = marshalCarToCarRequestBody(p.Car)
+	}
+	return body
+}
 
 // NewLoginUnauthorized builds a cars service login endpoint unauthorized error.
 func NewLoginUnauthorized(body LoginUnauthorizedResponseBody) carssvc.Unauthorized {
@@ -64,4 +114,44 @@ func NewListInvalidScopes(body ListInvalidScopesResponseBody) carssvc.InvalidSco
 func NewListUnauthorized(body ListUnauthorizedResponseBody) carssvc.Unauthorized {
 	v := carssvc.Unauthorized(body)
 	return v
+}
+
+// NewAddCarCollectionCreated builds a "cars" service "add" endpoint result
+// from a HTTP "Created" response.
+func NewAddCarCollectionCreated(body AddResponseBody) carssvcviews.CarCollectionView {
+	v := make([]*carssvcviews.CarView, len(body))
+	for i, val := range body {
+		v[i] = &carssvcviews.CarView{
+			Make:      val.Make,
+			Model:     val.Model,
+			BodyStyle: val.BodyStyle,
+		}
+	}
+	return v
+}
+
+// NewAddInvalidScopes builds a cars service add endpoint invalid-scopes error.
+func NewAddInvalidScopes(body AddInvalidScopesResponseBody) carssvc.InvalidScopes {
+	v := carssvc.InvalidScopes(body)
+	return v
+}
+
+// NewAddUnauthorized builds a cars service add endpoint unauthorized error.
+func NewAddUnauthorized(body AddUnauthorizedResponseBody) carssvc.Unauthorized {
+	v := carssvc.Unauthorized(body)
+	return v
+}
+
+// Validate runs the validations defined on carResponseBody
+func (body *CarResponseBody) Validate() (err error) {
+	if body.Make == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("make", "body"))
+	}
+	if body.Model == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("model", "body"))
+	}
+	if body.BodyStyle == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("body_style", "body"))
+	}
+	return
 }
